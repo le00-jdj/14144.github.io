@@ -949,19 +949,17 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        // 存储动态数据
-        let dynamics = JSON.parse(localStorage.getItem('messi10_dynamics')) || [];
+        // 存储动态数据（从JSON文件加载）
+        let dynamics = [];
         // 新增：存储当前选中的待发布图片（base64格式）
         let selectedImage = '';
         
         // 页面加载完成后执行
         document.addEventListener('DOMContentLoaded', function() {
-            // 初始化动态列表
-            renderDynamics();
-            // 更新动态数量
-            updateDynamicCount();
+            // 1. 从JSON文件加载动态数据（核心修改：替换localStorage）
+            loadDynamicsFromJSON();
             
-            // 1. 导航菜单切换功能
+            // 2. 导航菜单切换功能（保留原有逻辑）
             const navLinks = document.querySelectorAll('.nav-menu a, .album-more');
             navLinks.forEach(link => {
                 link.addEventListener('click', function(e) {
@@ -980,35 +978,31 @@
                 });
             });
 
-            // 2. 完善图片选择与预览功能
+            // 3. 图片选择与预览功能（保留原有逻辑）
             const uploadImage = document.getElementById('uploadImage');
             const previewImg = document.getElementById('previewImg');
             const postImagePreview = document.getElementById('postImagePreview');
             const removeImage = document.getElementById('removeImage');
 
-            // 点击选择图片
             uploadImage.addEventListener('click', function(e) {
                 e.preventDefault();
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
-                fileInput.accept = 'image/*'; // 仅允许选择图片
-                fileInput.multiple = false; // 单图模式，如需多图可改为true
+                fileInput.accept = 'image/*';
+                fileInput.multiple = false;
                 
-                // 选择图片后的处理
                 fileInput.addEventListener('change', function() {
                     if (this.files.length === 0) return;
                     const file = this.files[0];
-                    // 校验文件类型
                     if (!file.type.startsWith('image/')) {
                         showToast('请选择有效的图片文件', 'error');
                         return;
                     }
-                    // 用FileReader将图片转为base64
                     const reader = new FileReader();
                     reader.onload = function(e) {
-                        selectedImage = e.target.result; // 存储图片base64
-                        previewImg.src = selectedImage; // 显示预览
-                        postImagePreview.style.display = 'block'; // 显示预览区域
+                        selectedImage = e.target.result;
+                        previewImg.src = selectedImage;
+                        postImagePreview.style.display = 'block';
                         showToast('图片选择成功');
                     };
                     reader.readAsDataURL(file);
@@ -1017,64 +1011,60 @@
                 fileInput.click();
             });
 
-            // 移除选中的图片
             removeImage.addEventListener('click', function() {
-                selectedImage = ''; // 清空图片数据
+                selectedImage = '';
                 previewImg.src = '';
-                postImagePreview.style.display = 'none'; // 隐藏预览区域
+                postImagePreview.style.display = 'none';
             });
 
-            // 3. 发布动态功能（新增图片数据处理）
+            // 4. 发布动态功能（核心修改：调用saveDynamicsToJSON）
             const postBtn = document.getElementById('postBtn');
             const postContent = document.getElementById('postContent');
             
             postBtn.addEventListener('click', function() {
                 const content = postContent.value.trim();
-                // 内容和图片至少有一个才能发布
                 if (content === '' && selectedImage === '') {
                     showToast('请输入内容或选择图片！', 'error');
                     return;
                 }
                 
-                // 创建新动态（新增image字段）
+                // 创建新动态
                 const newDynamic = {
                     id: Date.now(),
                     content: content,
-                    image: selectedImage, // 存储图片base64
+                    image: selectedImage,
                     time: new Date().toLocaleString(),
                     likes: 0,
                     comments: 0
                 };
                 
-                // 添加到数组并保存到本地存储
+                // 添加到数组
                 dynamics.unshift(newDynamic);
-                localStorage.setItem('messi10_dynamics', JSON.stringify(dynamics));
+                
+                // 保存动态到JSON（核心修改）
+                saveDynamicsToJSON();
                 
                 // 更新UI
-                showToast('动态发布成功！');
-                // 清空发布框
+                showToast('动态发布成功！请复制控制台JSON更新仓库文件');
                 postContent.value = '';
                 selectedImage = '';
                 previewImg.src = '';
                 postImagePreview.style.display = 'none';
-                // 重新渲染动态列表
                 renderDynamics();
                 updateDynamicCount();
                 
                 // 自动切换到动态页面
                 switchPage('dynamic');
-                // 更新导航激活状态
                 navLinks.forEach(item => item.classList.remove('active'));
                 document.querySelector(`.nav-menu a[data-page="dynamic"]`).classList.add('active');
             });
 
-            // 4. 相册图片预览功能（包括完整相册）
+            // 5. 相册图片预览功能（保留原有逻辑）
             const albumImages = document.querySelectorAll('.album-img, .album-full-img');
             const imageModal = document.getElementById('imageModal');
             const modalImage = document.getElementById('modalImage');
             const closeModal = document.getElementById('closeModal');
             
-            // 相册图片点击预览
             albumImages.forEach(img => {
                 img.addEventListener('click', function() {
                     const imgSrc = this.getAttribute('data-src');
@@ -1083,7 +1073,6 @@
                 });
             });
             
-            // 关闭弹窗
             closeModal.addEventListener('click', function() {
                 imageModal.style.display = 'none';
             });
@@ -1093,7 +1082,7 @@
                 }
             });
 
-            // 5. 其他交互功能
+            // 6. 其他交互功能（保留原有逻辑）
             const editCover = document.querySelector('.edit-cover');
             editCover.addEventListener('click', function() {
                 showToast('封面更换功能即将上线，敬请期待！');
@@ -1107,14 +1096,52 @@
             });
         });
 
-        // 切换页面函数
+        // ========== 核心修改：JSON文件读写函数 ==========
+        /**
+         * 从dynamics.json加载动态数据（替换localStorage.getItem）
+         */
+        function loadDynamicsFromJSON() {
+            fetch('./dynamics.json') // 访问仓库根目录的JSON文件
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error('JSON文件不存在，使用空数组');
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    dynamics = data || [];
+                    renderDynamics();
+                    updateDynamicCount();
+                })
+                .catch(error => {
+                    console.log('加载JSON失败:', error);
+                    dynamics = [];
+                    renderDynamics();
+                    updateDynamicCount();
+                });
+        }
+
+        /**
+         * 保存动态到JSON文件（替换localStorage.setItem）
+         * 控制台输出JSON，手动复制更新仓库的dynamics.json
+         */
+        function saveDynamicsToJSON() {
+            // 格式化输出JSON，方便复制
+            const jsonStr = JSON.stringify(dynamics, null, 2);
+            console.log('===== 请复制以下JSON内容更新仓库的dynamics.json =====');
+            console.log(jsonStr);
+            console.log('=====================================================');
+            
+            // 提示用户手动更新
+            alert('已在控制台输出最新动态JSON，请复制并更新仓库中的dynamics.json文件，然后push到GitHub完成同步！');
+        }
+
+        // ========== 原有功能函数（无需修改） ==========
         function switchPage(pageName) {
-            // 隐藏所有内容区域
             document.querySelectorAll('.content-section').forEach(section => {
                 section.classList.remove('active');
             });
             
-            // 显示对应内容区域
             if (pageName === 'home') {
                 document.querySelector('.home-content').classList.add('active');
             } else if (pageName === 'dynamic') {
@@ -1127,23 +1154,17 @@
             }
         }
 
-        // 切换到首页
         function switchToHome() {
             switchPage('home');
             document.querySelector('.nav-menu a[data-page="home"]').classList.add('active');
-            // 聚焦到输入框
             document.getElementById('postContent').focus();
         }
 
-        // 渲染动态列表（新增图片渲染逻辑）
         function renderDynamics() {
             const dynamicList = document.getElementById('dynamicList');
-            
-            // 清空列表
             dynamicList.innerHTML = '';
             
             if (dynamics.length === 0) {
-                // 动态创建空状态元素
                 const dynamicEmpty = document.createElement('div');
                 dynamicEmpty.className = 'empty-state';
                 dynamicEmpty.id = 'dynamicEmpty';
@@ -1156,11 +1177,9 @@
                 return;
             }
             
-            // 生成动态列表（新增图片渲染）
             dynamics.forEach(dynamic => {
                 const dynamicItem = document.createElement('div');
                 dynamicItem.className = 'dynamic-item';
-                // 拼接图片HTML（如果有图片）
                 const imageHtml = dynamic.image 
                     ? `<img src="${dynamic.image}" alt="动态配图" class="dynamic-image" data-src="${dynamic.image}">` 
                     : '';
@@ -1191,7 +1210,7 @@
                 dynamicList.appendChild(dynamicItem);
             });
 
-            // 给动态内的图片绑定点击预览事件
+            // 动态图片预览绑定
             const dynamicImages = document.querySelectorAll('.dynamic-image');
             const imageModal = document.getElementById('imageModal');
             const modalImage = document.getElementById('modalImage');
@@ -1204,34 +1223,30 @@
             });
         }
 
-        // 更新动态数量
         function updateDynamicCount() {
             const dynamicStat = document.querySelector('.stat-item[data-stat="dynamic"] .stat-num');
             dynamicStat.textContent = dynamics.length;
         }
 
-        // 点赞动态
         function likeDynamic(id) {
             const dynamic = dynamics.find(item => item.id === id);
             if (dynamic) {
                 dynamic.likes++;
-                localStorage.setItem('messi10_dynamics', JSON.stringify(dynamics));
+                saveDynamicsToJSON(); // 点赞后也保存JSON
                 renderDynamics();
             }
         }
 
-        // 删除动态
         function deleteDynamic(id) {
             if (confirm('确定要删除这条动态吗？')) {
                 dynamics = dynamics.filter(item => item.id !== id);
-                localStorage.setItem('messi10_dynamics', JSON.stringify(dynamics));
+                saveDynamicsToJSON(); // 删除后保存JSON
                 renderDynamics();
                 updateDynamicCount();
-                showToast('动态已删除');
+                showToast('动态已删除，请复制控制台JSON更新仓库文件');
             }
         }
 
-        // 提示框函数
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
             toast.textContent = message;
